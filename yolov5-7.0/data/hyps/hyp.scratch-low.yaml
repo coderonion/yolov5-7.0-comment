@@ -29,6 +29,6 @@ shear: 0.0  # image shear (+/- deg)   random_perspective增强系数 图像剪�
 perspective: 0.0  # image perspective (+/- fraction), range 0-0.001  random_perspective增强系数 透明度    (+/- fraction), range 0-0.001
 flipud: 0.0  # image flip up-down (probability) 上下翻转数据增强(probability)
 fliplr: 0.5  # image flip left-right (probability) 左右翻转数据增强(probability)
-mosaic: 1.0  # image mosaic (probability)   mosaic数据增强(probability)
+mosaic: 1.0  # image mosaic (probability) mosaic数据增强(probability)
 mixup: 0.0  # image mixup (probability)  mixup数据增强(probability)
-copy_paste: 0.0  # segment copy-paste (probability)
+copy_paste: 0.0  # segment copy-paste (probability) copy_paste数据增强(probability)
