@@ -3,10 +3,10 @@
 Activation functions
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
+import torch # 导入torch框架
+import torch.nn as nn # 导入torch框架的神经网络模块
+import torch.nn.functional as F  # 导入torch框架的功能模块
+ 
 
 class SiLU(nn.Module):
     # SiLU activation https://arxiv.org/pdf/1606.08415.pdf

@@ -3,9 +3,9 @@
 Model validation metrics
 """
 
-import math
-import warnings
-from pathlib import Path
+import math # python 内置数学模块
+import warnings 
+from pathlib import Path # python内置路径模块
 
 import matplotlib.pyplot as plt
 import numpy as np

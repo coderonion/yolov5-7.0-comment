@@ -3,8 +3,8 @@
 Loss functions
 """
 
-import torch
-import torch.nn as nn
+import torch # 导入torch 包
+import torch.nn as nn  # 导入torch的神经网络库
 
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
