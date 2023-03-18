@@ -19,18 +19,18 @@ Usage - formats:
                               yolov5s_paddle_model       # PaddlePaddle
 """
 
-import argparse  # 解析命令行参数模块
-import json    # 实现字典列表和JSON字符串之间的相互解析
-import os   # 与操作系统进行交互的模块 包含文件路径操作和解析
-import sys   # sys系统模块 包含了与Python解释器和它的环境有关的函数
-from pathlib import Path # Path将str转换为Path对象 使字符串路径易于操作的模块
+import argparse  # 命令行选项、参数和子命令解析器
+import json    # JSON 编码和解码器
+import os   # 多种操作系统接口
+import sys   # 系统相关的参数和函数
+from pathlib import Path # 面向对象的文件系统路径
 
-import numpy as np
-import torch
+import numpy as np 
+import torch 
 from tqdm import tqdm
 
-FILE = Path(__file__).resolve()
-ROOT = FILE.parents[0]  # YOLOv5 root directory
+FILE = Path(__file__).resolve() # 获取该文件的绝对路径， 输出****/yolov5-7.0/detect.py  返回新的路径对象 p.resolve() 绝路径 PosixPath('/home/antoine/pathlib')
+ROOT = FILE.parents[0]  # YOLOv5 root directory 获取yolov5下的根路径，输出****/yolov5-7.0 
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
@@ -94,11 +94,11 @@ def process_batch(detections, labels, iouv):
     return torch.tensor(correct, dtype=torch.bool, device=iouv.device)
 
 
-@smart_inference_mode()
+@smart_inference_mode() # 上下文管理 
 def run(
-        data,
-        weights=None,  # model.pt path(s)
-        batch_size=32,  # batch size
+        data, #数据集配置文件地址 包含数据集的路径、类别个数、类名、下载地址等信息 train.py时传入data_dict
+        weights=None,  # model.pt path(s) 模型的权重文件地址 运行train.py=None 运行test.py=默认weights/yolov5s.pt
+        batch_size=32,  # batch size  前向传播的批次大小 运行test.py传入默认32 运行train.py则传入batch_size // WORLD_SIZE * 2
         imgsz=640,  # inference size (pixels)
         conf_thres=0.001,  # confidence threshold
         iou_thres=0.6,  # NMS IoU threshold
@@ -108,7 +108,7 @@ def run(
         workers=8,  # max dataloader workers (per RANK in DDP mode)
         single_cls=False,  # treat as single-class dataset
         augment=False,  # augmented inference
-        verbose=False,  # verbose output
+        verbose=False,  # verbose output输出每一个类别的信息
         save_txt=False,  # save results to *.txt
         save_hybrid=False,  # save label+prediction hybrid results to *.txt
         save_conf=False,  # save confidences in --save-txt labels
@@ -125,22 +125,28 @@ def run(
         callbacks=Callbacks(),
         compute_loss=None,
 ):
+     # ============================================== 1、初始化配置1 ==================================================
+    # 初始化模型并选择相应的计算设备
+    # 判断是否是训练时调用run函数(执行train.py脚本), 如果是就使用训练时的设备 一般都是train
     # Initialize/load model and set device
     training = model is not None
     if training:  # called by train.py
         device, pt, jit, engine = next(model.parameters()).device, True, False, False  # get model device, PyTorch model
-        half &= device.type != 'cpu'  # half precision only supported on CUDA
+        half &= device.type != 'cpu'  # half precision only supported on CUDA  Half model 只能在单GPU设备上才能使用
         model.half() if half else model.float()
     else:  # called directly
         device = select_device(device, batch_size=batch_size)
 
         # Directories
+        # 生成save_dir文件路径  run\test\expn
         save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
         (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
         # Load model
+        # 加载模型 load FP32 model  只在运行test.py才需要自己加载model
         model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
         stride, pt, jit, engine = model.stride, model.pt, model.jit, model.engine
+        # 检测输入图片的分辨率imgsz是否能被gs整除 只在运行test.py才需要自己生成check imgsz
         imgsz = check_img_size(imgsz, s=stride)  # check image size
         half = model.fp16  # FP16 supported on limited backends with CUDA
         if engine:
@@ -155,13 +161,19 @@ def run(
         data = check_dataset(data)  # check
 
     # Configure
-    model.eval()
+    model.eval()  # 启动模型验证模式
     cuda = device.type != 'cpu'
+    # ============================================== 3、初始化配置2 ==================================================
+    # 测试数据是否是coco数据集
     is_coco = isinstance(data.get('val'), str) and data['val'].endswith(f'coco{os.sep}val2017.txt')  # COCO dataset
     nc = 1 if single_cls else int(data['nc'])  # number of classes
-    iouv = torch.linspace(0.5, 0.95, 10, device=device)  # iou vector for mAP@0.5:0.95
+    # 计算mAP相关参数
+    # 设置iou阈值 从0.5-0.95取10个(0.05间隔)   iou vector for mAP@0.5:0.95
+    iouv = torch.linspace(0.5, 0.95, 10, device=device)  # iou vector for mAP@0.5:0.95  iouv: [0.50000, 0.55000, 0.60000, 0.65000, 0.70000, 0.75000, 0.80000, 0.85000, 0.90000, 0.95000]
     niou = iouv.numel()
-
+    # ============================================== 4、加载val数据集 ==================================================
+    # 如果不是训练(执行val.py脚本调用run函数)就调用create_dataloader生成dataloader
+    # 如果是训练(执行train.py调用run函数)就不需要生成dataloader 可以直接从参数中传过来testloader
     # Dataloader
     if not training:
         if pt and not single_cls:  # check --weights are trained on --data
@@ -171,6 +183,7 @@ def run(
         model.warmup(imgsz=(1 if pt else batch_size, 3, imgsz, imgsz))  # warmup
         pad, rect = (0.0, False) if task == 'speed' else (0.5, pt)  # square inference for benchmarks
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
+        # 创建dataloader 这里的rect默认为True 矩形推理用于测试集 在不影响mAP的情况下可以大大提升推理速度
         dataloader = create_dataloader(data[task],
                                        imgsz,
                                        batch_size,
@@ -180,39 +193,56 @@ def run(
                                        rect=rect,
                                        workers=workers,
                                        prefix=colorstr(f'{task}: '))[0]
-
-    seen = 0
-    confusion_matrix = ConfusionMatrix(nc=nc)
-    names = model.names if hasattr(model, 'names') else model.module.names  # get class names
+   # ============================================== 5、初始化配置3 ==================================================
+    # 初始化一些测试需要的参数
+    seen = 0  # 初始化测试的图片的数量
+    confusion_matrix = ConfusionMatrix(nc=nc)# 初始化混淆矩阵
+    names = model.names if hasattr(model, 'names') else model.module.names  # get class names  获取数据集所有类别的类名
     if isinstance(names, (list, tuple)):  # old format
         names = dict(enumerate(names))
+    # 获取coco数据集的类别索引
+    # coco数据集是80个类 索引范围本应该是0~79,但是这里返回的确是0~90  coco官方就是这样规定的
+    # coco80_to_coco91_class就是为了与上述索引对应起来，返回一个范围在0~80的索引数组
+    coco91class = coco80_to_coco91_class()
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
+     # 设置tqdm进度条的显示信息
     s = ('%22s' + '%11s' * 6) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP50-95')
+    # 初始化p, r, f1, mp, mr, map50, map指标
     tp, fp, p, r, f1, mp, mr, map50, ap50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     dt = Profile(), Profile(), Profile()  # profiling times
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format=TQDM_BAR_FORMAT)  # progress bar
+    # ============================================== 6、开始验证 ==================================================
     for batch_i, (im, targets, paths, shapes) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
-        with dt[0]:
+        # 6.1、预处理图片和target
+        with dt[0]: 
             if cuda:
                 im = im.to(device, non_blocking=True)
                 targets = targets.to(device)
-            im = im.half() if half else im.float()  # uint8 to fp16/32
+            im = im.half() if half else im.float()  # uint8 to fp16/32 # 如果half为True 就把图片变为half精度 
             im /= 255  # 0 - 255 to 0.0 - 1.0
             nb, _, height, width = im.shape  # batch size, channels, height, width
 
         # Inference
+        # 6.2、Run model  前向推理
+        # out:       推理结果 1个 [bs, anchor_num*grid_w*grid_h, xywh+c+20classes] = [1, 19200+4800+1200, 25]
+        # train_out: 训练结果 3个 [bs, anchor_num, grid_w, grid_h, xywh+c+20classes]
+        #                    如: [1, 3, 80, 80, 25] [1, 3, 40, 40, 25] [1, 3, 20, 20, 25]
         with dt[1]:
             preds, train_out = model(im) if compute_loss else (model(im, augment=augment), None)
 
         # Loss
+        # 6.3、计算验证集损失
+        # compute_loss不为空 说明正在执行train.py  根据传入的compute_loss计算损失值
         if compute_loss:
             loss += compute_loss(train_out, targets)[1]  # box, obj, cls
 
         # NMS
+        # 6.4、Run NMS
+        # 将真实框target的xywh(因为target是在labelimg中做了归一化的)映射到img(test)尺寸
         targets[:, 2:] *= torch.tensor((width, height, width, height), device=device)  # to pixels
         lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
         with dt[2]:
@@ -359,7 +389,7 @@ def parse_opt():
     parser.add_argument('--name', default='exp', help='save to project/name') # 测试保存的文件地址 默认exp  保存在runs/val/exp下
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment') # 是否存在当前文件 默认False 一般是 no exist-ok 连用  所以一般都要重新创建文件夹
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference') #  是否使用半精度推理 默认False
-    parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference') #  是否使用dnn
     opt = parser.parse_args()
     opt.data = check_yaml(opt.data)  # check YAML
     opt.save_json |= opt.data.endswith('coco.yaml')
@@ -369,9 +399,9 @@ def parse_opt():
 
 
 def main(opt):
-    check_requirements(exclude=('tensorboard', 'thop'))
+    check_requirements(exclude=('tensorboard', 'thop')) # 检测requirements文件中需要的包是否安装好了
 
-    if opt.task in ('train', 'val', 'test'):  # run normally
+    if opt.task in ('train', 'val', 'test'):  # run normally  # 如果task in ['train', 'val', 'test']就正常测试 训练集/验证集/测试集
         if opt.conf_thres > 0.001:  # https://github.com/ultralytics/yolov5/issues/1466
             LOGGER.info(f'WARNING ⚠️ confidence threshold {opt.conf_thres} > 0.001 produces invalid results')
         if opt.save_hybrid:
@@ -381,13 +411,14 @@ def main(opt):
     else:
         weights = opt.weights if isinstance(opt.weights, list) else [opt.weights]
         opt.half = torch.cuda.is_available() and opt.device != 'cpu'  # FP16 for fastest results
-        if opt.task == 'speed':  # speed benchmarks
+        if opt.task == 'speed':  # speed benchmarks 如果opt.task == 'speed' 就测试yolov5系列和yolov3-spp各个模型的速度评估
             # python val.py --task speed --data coco.yaml --batch 1 --weights yolov5n.pt yolov5s.pt...
             opt.conf_thres, opt.iou_thres, opt.save_json = 0.25, 0.45, False
             for opt.weights in weights:
                 run(**vars(opt), plots=False)
+            
 
-        elif opt.task == 'study':  # speed vs mAP benchmarks
+        elif opt.task == 'study':  # speed vs mAP benchmarks # 如果opt.task = ['study']就评估yolov5系列和yolov3-spp各个模型在各个尺度下的指标并可视化
             # python val.py --task study --data coco.yaml --iou 0.7 --weights yolov5n.pt yolov5s.pt...
             for opt.weights in weights:
                 f = f'study_{Path(opt.data).stem}_{Path(opt.weights).stem}.txt'  # filename to save to
@@ -397,7 +428,7 @@ def main(opt):
                     r, _, t = run(**vars(opt), plots=False)
                     y.append(r + t)  # results and times
                 np.savetxt(f, y, fmt='%10.4g')  # save
-            os.system('zip -r study.zip study_*.txt')
+            os.system('zip -r study.zip study_*.txt') # os.system函数可以将字符串转化成命令在服务器上运行
             plot_val_study(x=x)  # plot
 
 

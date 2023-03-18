@@ -3,17 +3,17 @@
 General utils
 """
 
-import contextlib
-import glob
-import inspect
-import logging
+import contextlib # 为 with语句上下文提供的工具
+import glob # Unix 风格路径名模式扩展
+import inspect # 检查对象
+import logging # Python 的日志记录工具
 import logging.config
-import math
-import os
-import platform
-import random
-import re
-import signal
+import math # 数学函数
+import os # 多种操作系统接口
+import platform # 获取底层平台的标识数据
+import random # 生成伪随机数
+import re #  正则表达式操作
+import signal 
 import sys
 import time
 import urllib
@@ -117,7 +117,7 @@ LOGGING_NAME = "yolov5"
 
 def set_logging(name=LOGGING_NAME, verbose=True):
     # sets up logging for the given name
-    rank = int(os.getenv('RANK', -1))  # rank in world for Multi-GPU trainings
+    rank = int(os.getenv('RANK', -1))  # rank in world for Multi-GPU trainings # 表示进程编号，默认为-
     level = logging.INFO if verbose and rank in {-1, 0} else logging.ERROR
     logging.config.dictConfig({
         "version": 1,

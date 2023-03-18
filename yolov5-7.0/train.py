@@ -26,7 +26,7 @@ from datetime import datetime  # 表示日期时间的类
 from pathlib import Path # Python文件路径
 
 import numpy as np   # numpy数组操作模块
-import torch  #     torch框架       
+import torch  # torch框架       
 import torch.distributed as dist # 分布式训练模块
 import torch.nn as nn   # 对torch.nn.functional的类的封装 有很多和torch.nn.functional相同的函数
 import yaml # 操作yaml文件模块
@@ -419,7 +419,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
             # Save model
-             # 保存带checkpoint的模型用于inference或resuming training
+            # 保存带checkpoint的模型用于inference或resuming training
             # 保存模型, 还保存了epoch, results, optimizer等信息
             # optimizer将不会在最后一轮完成后保存
             # model保存的是EMA的模型
@@ -444,7 +444,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 del ckpt
                 callbacks.run('on_model_save', last, epoch, final_epoch, best_fitness, fi)
 
-        # EarlyStopping
+        # EarlyStopping 早停
         if RANK != -1:  # if DDP training
             broadcast_list = [stop if RANK == 0 else None]
             dist.broadcast_object_list(broadcast_list, 0)  # broadcast 'stop' to all ranks
@@ -474,7 +474,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                         dataloader=val_loader,
                         save_dir=save_dir,
                         save_json=is_coco,
-                        verbose=True,
+                        verbose=True, 
                         plots=plots,
                         callbacks=callbacks,
                         compute_loss=compute_loss)  # val best model with plots
