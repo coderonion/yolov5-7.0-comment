@@ -43,30 +43,31 @@ TensorFlow.js:
     $ ln -s ../../yolov5/yolov5s_web_model public/yolov5s_web_model
     $ npm start
 """
-
-import argparse
-import contextlib
-import json
-import os
-import platform
-import re
-import subprocess
-import sys
-import time
-import warnings
-from pathlib import Path
-
-import pandas as pd
-import torch
+# 导入Python 模块
+import argparse # 命令行选项、参数和子命令解析器
+import contextlib # 为 with语句上下文提供的工具
+import json # JSON 编码和解码器
+import os # 多种操作系统接口
+import platform # 获取底层平台的标识数据
+import re #  正则表达式操作
+import subprocess # 子进程管理
+import sys #  系统相关的参数和函数
+import time # 时间的访问和转换
+import warnings # 警告信息的控制
+from pathlib import Path # 面向对象的文件系统路径
+# 导入第三方库
+import pandas as pd  # 数据处理库
+import torch # 深度学习框架库
 from torch.utils.mobile_optimizer import optimize_for_mobile
 
-FILE = Path(__file__).resolve()
-ROOT = FILE.parents[0]  # YOLOv5 root directory
+FILE = Path(__file__).resolve() # 获取该文件的绝对路径， 输出****/yolov5-7.0/export.py  
+ROOT = FILE.parents[0]  # YOLOv5 root directory 获取yolov5下的根路径，输出****/yolov5-7.0 
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
-if platform.system() != 'Windows':
+if platform.system() != 'Windows':  # not Windows environment
     ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
+# ----------------- 导入自定义的其他包 -------------------
 from models.experimental import attempt_load
 from models.yolo import ClassificationModel, Detect, DetectionModel, SegmentationModel
 from utils.dataloaders import LoadImages
@@ -487,7 +488,7 @@ def add_tflite_metadata(file, metadata, num_outputs):
         tmp_file.unlink()
 
 
-@smart_inference_mode()
+@smart_inference_mode() # # 该注解是自个定义的注解，主要的功能是判断torch版本 如果torch>=1.9.0则应用torch.inference_mode()装饰器，否则使用torch.no_grad()装饰器,类似于 no_grad 的新上下文管理器，该模式禁用了视图跟踪和版本计数器，所以在此模式下运行代码能够获得更好的性能，速度也会更快。
 def run(
         data=ROOT / 'data/coco128.yaml',  # 'dataset.yaml path'
         weights=ROOT / 'yolov5s.pt',  # weights path
@@ -612,31 +613,31 @@ def run(
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
-    parser.add_argument('--weights', nargs='+', type=str, default=ROOT / 'yolov5s.pt', help='model.pt path(s)')
-    parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640, 640], help='image (h, w)')
-    parser.add_argument('--batch-size', type=int, default=1, help='batch size')
-    parser.add_argument('--device', default='cpu', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--half', action='store_true', help='FP16 half-precision export')
-    parser.add_argument('--inplace', action='store_true', help='set YOLOv5 Detect() inplace=True')
+    parser.add_argument('--weights', nargs='+', type=str, default=ROOT / 'yolov5s.pt', help='model.pt path(s)') # weights: 要转换的权重文件pt地址 默认=ROOT / 'yolov5s.pt'
+    parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640, 640], help='image (h, w)') # img-size: 输入模型的图片size=(height, width) 默认=[640, 640]
+    parser.add_argument('--batch-size', type=int, default=1, help='batch size') # batch-size: batch大小 默认=1
+    parser.add_argument('--device', default='cpu', help='cuda device, i.e. 0 or 0,1,2,3 or cpu') #  device: 模型运行设备 cuda device, i.e. 0 or 0,1,2,3 or cpu 默认=cpu
+    parser.add_argument('--half', action='store_true', help='FP16 half-precision export') #  half: 是否使用半精度FP16export转换 默认=False
+    parser.add_argument('--inplace', action='store_true', help='set YOLOv5 Detect() inplace=True') # inplace: 是否set YOLOv5 Detect() inplace=True  默认=False
     parser.add_argument('--keras', action='store_true', help='TF: use Keras')
-    parser.add_argument('--optimize', action='store_true', help='TorchScript: optimize for mobile')
+    parser.add_argument('--optimize', action='store_true', help='TorchScript: optimize for mobile') #  optimize: TorchScript转化参数 是否进行移动端优化  默认=False
     parser.add_argument('--int8', action='store_true', help='CoreML/TF INT8 quantization')
     parser.add_argument('--dynamic', action='store_true', help='ONNX/TF/TensorRT: dynamic axes')
-    parser.add_argument('--simplify', action='store_true', help='ONNX: simplify model')
-    parser.add_argument('--opset', type=int, default=12, help='ONNX: opset version')
+    parser.add_argument('--simplify', action='store_true', help='ONNX: simplify model') #  simplify: ONNX转换参数 是否简化onnx模型  默认=False
+    parser.add_argument('--opset', type=int, default=12, help='ONNX: opset version') # opset-version: ONNX转换参数 设置版本  默认=12
     parser.add_argument('--verbose', action='store_true', help='TensorRT: verbose log')
     parser.add_argument('--workspace', type=int, default=4, help='TensorRT: workspace size (GB)')
     parser.add_argument('--nms', action='store_true', help='TF: add NMS to model')
     parser.add_argument('--agnostic-nms', action='store_true', help='TF: add agnostic NMS to model')
     parser.add_argument('--topk-per-class', type=int, default=100, help='TF.js NMS: topk per class to keep')
     parser.add_argument('--topk-all', type=int, default=100, help='TF.js NMS: topk for all classes to keep')
-    parser.add_argument('--iou-thres', type=float, default=0.45, help='TF.js NMS: IoU threshold')
-    parser.add_argument('--conf-thres', type=float, default=0.25, help='TF.js NMS: confidence threshold')
+    parser.add_argument('--iou-thres', type=float, default=0.45, help='TF.js NMS: IoU threshold') # iou-thres: 做nms的iou阈值 默认0.45
+    parser.add_argument('--conf-thres', type=float, default=0.25, help='TF.js NMS: confidence threshold')# object置信度阈值 默认0.25
     parser.add_argument(
         '--include',
         nargs='+',
         default=['torchscript'],
-        help='torchscript, onnx, openvino, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle')
+        help='torchscript, onnx, openvino, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle') # include: 要将pt文件转为什么格式 可以为单个原始也可以为list 默认=['torchscript'] torchscript, onnx, openvino, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle
     opt = parser.parse_args()
     print_args(vars(opt))
     return opt
@@ -648,5 +649,5 @@ def main(opt):
 
 
 if __name__ == "__main__":
-    opt = parse_opt()
+    opt = parse_opt() 
     main(opt)

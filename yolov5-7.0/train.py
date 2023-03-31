@@ -14,26 +14,26 @@ Models:     https://github.com/ultralytics/yolov5/tree/master/models
 Datasets:   https://github.com/ultralytics/yolov5/tree/master/data
 Tutorial:   https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data
 """
-
-import argparse  # 解析命令行参数模块
-import math      #  数学公式模块
-import os        #  与操作系统进行交互的模块 包含文件路径操作和解析
-import random    #  生成随机数模块
-import sys           # sys系统模块 包含了与Python解释器和它的环境有关的函数
-import time        # 时间模块 更底层
-from copy import deepcopy # 深拷贝
-from datetime import datetime  # 表示日期时间的类
-from pathlib import Path # Python文件路径
-
-import numpy as np   # numpy数组操作模块
-import torch  # torch框架       
+# 导入Python 模块
+import argparse  # 命令行选项、参数和子命令解析器
+import math      #  数学函数
+import os        #  多种操作系统接口
+import random    #  生成伪随机数
+import sys       # 系统相关的参数和函数
+import time      #  时间的访问和转换
+from copy import deepcopy # 浅层 (shallow) 和深层 (deep) 复制操作
+from datetime import datetime  # 基本日期和时间类型
+from pathlib import Path # 面向对象的文件系统路径
+# 导入第三方库
+import numpy as np   # 数据处理库
+import torch  # 深度学习库       
 import torch.distributed as dist # 分布式训练模块
 import torch.nn as nn   # 对torch.nn.functional的类的封装 有很多和torch.nn.functional相同的函数
-import yaml # 操作yaml文件模块
+import yaml # yaml文件操作库
 from torch.optim import lr_scheduler  # 学习率模块
-from tqdm import tqdm # 进度条模块
+from tqdm import tqdm # 进度条库
 
-FILE = Path(__file__).resolve() # 获取该文件的绝对路径， 输出****/yolov5-7.0/detect.py  返回新的路径对象 p.resolve() 绝路径 PosixPath('/home/antoine/pathlib')
+FILE = Path(__file__).resolve() # 获取该文件的绝对路径， 输出****/yolov5-7.0/detect.py  
 ROOT = FILE.parents[0]  # YOLOv5 root directory 获取yolov5下的根路径，输出****/yolov5-7.0 
 if str(ROOT) not in sys.path: # 查询路径的列表是否在内，如果不在内则添加
     sys.path.append(str(ROOT))  # add ROOT to PATH

@@ -25,14 +25,14 @@ Usage - formats:
                                  yolov5s_edgetpu.tflite     # TensorFlow Edge TPU
                                  yolov5s_paddle_model       # PaddlePaddle
 """
-
-import argparse  #  python的命令行解析的标准模块  可以让我们直接在命令行中就可以向程序中传入参数并让程序运行
-import os  # 系统相关
-import platform # 用platform模块获取系统信息
-import sys #  sys系统模块 包含了与Python解释器和它的环境有关的函数。
-from pathlib import Path # Path将str转换为Path对象 使字符串路径易于操作的模块
-
-import torch # pytorch模块
+# 导入Python 模块
+import argparse  # 命令行选项、参数和子命令解析器
+import os # 多种操作系统接口
+import platform # 获取底层平台的标识数据
+import sys#  系统相关的参数和函数
+from pathlib import Path# 面向对象的文件系统路径
+# 导入第三方库
+import torch # 深度学习框架库
  
 FILE = Path(__file__).resolve()  # 获取该文件的绝对路径， 输出****/yolov5-7.0/detect.py  返回新的路径对象 p.resolve() 绝路径 PosixPath('/home/antoine/pathlib')
 ROOT = FILE.parents[0]  # YOLOv5 root directory =FILE.parent   获取yolov5下的根路径，输出****/yolov5-7.0 
@@ -49,7 +49,7 @@ from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
 
 
-@smart_inference_mode() # 该注解是自个定义的注解，主要的功能是判断torch版本 如果torch>=1.9.0则应用torch.inference_mode()装饰器，否则使用torch.no_grad()装饰器
+@smart_inference_mode() # 该注解是自个定义的注解，主要的功能是判断torch版本 如果torch>=1.9.0则应用torch.inference_mode()装饰器，否则使用torch.no_grad()装饰器,类似于 no_grad 的新上下文管理器，该模式禁用了视图跟踪和版本计数器，所以在此模式下运行代码能够获得更好的性能，速度也会更快。
 def run(
         weights=ROOT / 'yolov5s.pt',  # model path or triton URL 权重文件地址 默认ROOT yolov5s.pt
         source=ROOT / 'data/images',  # file/dir/URL/glob/screen/0(webcam) 测试数据文件(图片或视频)的保存路径 默认data/images
@@ -282,7 +282,7 @@ def parse_opt():
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='(optional) dataset.yaml path') # 训练指定数据
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w') # 网络输入图片的大小 默认640
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold') # object置信度阈值 默认0.25
-    parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')  #   iou-thres: 做nms的iou阈值 默认0.45
+    parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')  # iou-thres: 做nms的iou阈值 默认0.45
     parser.add_argument('--max-det', type=int, default=1000, help='maximum detections per image') # max-det: 每张图片最大的目标个数 默认1000
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu') # 设置代码执行的设备 cuda device, i.e. 0 or 0,1,2,3 or cpu
     parser.add_argument('--view-img', action='store_true', help='show results')  # 是否展示预测之后的图片或视频 默认False
