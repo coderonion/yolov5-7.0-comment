@@ -2,16 +2,16 @@
 """
 Image augmentation functions
 """
-# 导入Python 模块
+
 import math   # python数学内置数学模块
 import random # python内置随机数模块
-# 导入第三方库
-import cv2    # 图像处理库
-import numpy as np # 数据处理库
-import torch  # 深度学习库 
+
+import cv2    # opencv库
+import numpy as np  #numpy库
+import torch  # torch 库
 import torchvision.transforms as T # torchvision 图像变换 
 import torchvision.transforms.functional as TF # torchvision 图像变换 
-# ----------------- 导入自定义的其他包 -------------------
+
 from utils.general import LOGGER, check_version, colorstr, resample_segments, segment2box, xywhn2xyxy
 from utils.metrics import bbox_ioa
 

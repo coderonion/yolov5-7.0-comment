@@ -2,22 +2,22 @@
 """
 Activation functions
 """
-# 导入第三方库
-import torch # 深度学习库 
+
+import torch # 导入torch框架
 import torch.nn as nn # 导入torch框架的神经网络模块
 import torch.nn.functional as F  # 导入torch框架的功能模块
  
 
 class SiLU(nn.Module):
     # SiLU activation https://arxiv.org/pdf/1606.08415.pdf
-    @staticmethod #  静态方法无需实例化，也可以实例化后调用
+    @staticmethod
     def forward(x):
         return x * torch.sigmoid(x)
 
 
 class Hardswish(nn.Module):
     # Hard-SiLU activation
-    @staticmethod #  静态方法无需实例化，也可以实例化后调用
+    @staticmethod
     def forward(x):
         # return x * F.hardsigmoid(x)  # for TorchScript and CoreML
         return x * F.hardtanh(x + 3, 0.0, 6.0) / 6.0  # for TorchScript, CoreML and ONNX
@@ -25,7 +25,7 @@ class Hardswish(nn.Module):
 
 class Mish(nn.Module):
     # Mish activation https://github.com/digantamisra98/Mish
-    @staticmethod #  静态方法无需实例化，也可以实例化后调用
+    @staticmethod
     def forward(x):
         return x * F.softplus(x).tanh()
 
@@ -34,7 +34,7 @@ class MemoryEfficientMish(nn.Module):
     # Mish activation memory-efficient
     class F(torch.autograd.Function):
 
-        @staticmethod  # 静态方法无需实例化，也可以实例化后调用
+        @staticmethod
         def forward(ctx, x):
             ctx.save_for_backward(x)
             return x.mul(torch.tanh(F.softplus(x)))  # x * tanh(ln(1 + exp(x)))
