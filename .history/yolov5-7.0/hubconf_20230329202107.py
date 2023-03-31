@@ -9,8 +9,8 @@ Usage:
     model = torch.hub.load('ultralytics/yolov5', 'custom', 'yolov5s.pt')  # custom/local model
     model = torch.hub.load('.', 'custom', 'yolov5s.pt', source='local')  # local repo
 """
-# 导入第三方库
-import torch  # 深度学习库  
+
+import torch
 
 
 def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbose=True, device=None):
@@ -28,8 +28,8 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
     Returns:
         YOLOv5 model
     """
-    from pathlib import Path # 面向对象的文件系统路径
-    # ----------------- 导入自定义的其他包 -------------------
+    from pathlib import Path
+
     from models.common import AutoShape, DetectMultiBackend
     from models.experimental import attempt_load
     from models.yolo import ClassificationModel, DetectionModel, SegmentationModel
@@ -130,18 +130,16 @@ def yolov5l6(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=T
 
 def yolov5x6(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=True, device=None):
     # YOLOv5-xlarge-P6 model https://github.com/ultralytics/yolov5
-
     return _create('yolov5x6', pretrained, channels, classes, autoshape, _verbose, device)
 
 
 if __name__ == '__main__':
-    # 导入Python 模块
-    import argparse  # 命令行选项、参数和子命令解析器
-    from pathlib import Path # 面向对象的文件系统路径
-    # 导入第三方库
-    import numpy as np      # 数据处理库
-    from PIL import Image   # 图像处理库
-    # ----------------- 导入自定义的其他包 -------------------
+    import argparse
+    from pathlib import Path
+
+    import numpy as np
+    from PIL import Image
+
     from utils.general import cv2, print_args
 
     # Argparser
