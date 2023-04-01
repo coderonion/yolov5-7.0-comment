@@ -27,10 +27,10 @@ from pathlib import Path # 面向对象的文件系统路径
 # 导入第三方库
 import numpy as np   # 数据处理库
 import torch  # 深度学习库       
-import torch.distributed as dist # 分布式训练模块
-import torch.nn as nn   # 对torch.nn.functional的类的封装 有很多和torch.nn.functional相同的函数
+import torch.distributed as dist 
+import torch.nn as nn   
 import yaml # yaml文件操作库
-from torch.optim import lr_scheduler  # 学习率模块
+from torch.optim import lr_scheduler  
 from tqdm import tqdm # 进度条库
 
 FILE = Path(__file__).resolve() # 获取该文件的绝对路径， 输出****/yolov5-7.0/detect.py  

@@ -2,32 +2,32 @@
 """
 Dataloaders and dataset utils
 """
-
-import contextlib
-import glob
-import hashlib
-import json
-import math
-import os
-import random
-import shutil
-import time
-from itertools import repeat
-from multiprocessing.pool import Pool, ThreadPool
-from pathlib import Path
-from threading import Thread
-from urllib.parse import urlparse
-
-import numpy as np
+# 导入Python 模块
+import contextlib # 为 with语句上下文提供的工具
+import glob # Unix 风格路径名模式扩展
+import hashlib # 安全哈希与消息摘要
+import json # JSON 编码和解码器
+import math # 数学函数
+import os #   多种操作系统接口
+import random #生成伪随机数
+import shutil #高阶文件操
+import time # 时间的访问和转换
+from itertools import repeat # 为高效循环而创建迭代器的函数
+from multiprocessing.pool import Pool, ThreadPool #基于进程的并行
+from pathlib import Path #  面向对象的文件系统路径
+from threading import Thread  # 基于线程的并行
+from urllib.parse import urlparse # URL 处理模块
+# 导入第三方库 
+import numpy as np  # 数据处理库
 import psutil
-import torch
+import torch # 深度学习库
 import torch.nn.functional as F
 import torchvision
-import yaml
-from PIL import ExifTags, Image, ImageOps
+import yaml # yaml文件操作库
+from PIL import ExifTags, Image, ImageOps # 图像处理库
 from torch.utils.data import DataLoader, Dataset, dataloader, distributed
-from tqdm import tqdm
-
+from tqdm import tqdm # 进度条库
+# ----------------- 导入自定义的其他包 -------------------
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
                                  letterbox, mixup, random_perspective)
 from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, check_dataset, check_requirements,
@@ -39,8 +39,8 @@ from utils.torch_utils import torch_distributed_zero_first
 HELP_URL = 'See https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data'
 IMG_FORMATS = 'bmp', 'dng', 'jpeg', 'jpg', 'mpo', 'png', 'tif', 'tiff', 'webp', 'pfm'  # include image suffixes
 VID_FORMATS = 'asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'wmv'  # include video suffixes
-LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
-RANK = int(os.getenv('RANK', -1))
+LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html  这个 Worker 是这台机器上的第几个 Worker
+RANK = int(os.getenv('RANK', -1)) # 这个 Worker 是全局第几个 Worker
 PIN_MEMORY = str(os.getenv('PIN_MEMORY', True)).lower() == 'true'  # global pin_memory for dataloaders
 
 # Get orientation exif tag
