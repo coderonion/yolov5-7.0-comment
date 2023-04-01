@@ -1,5 +1,7 @@
-# YOLOv5-7-0-code-comments
-# 已经完成代码注释
+# YOLOv5(7-0)
+code-project
+
+# code-comments
 
 - data
 
@@ -9,6 +11,7 @@
 - utils
 
   - activations.py
+  - metrics.py
   - loss.py
 
 - [train.py](https://blog.csdn.net/ag_ndqn/article/details/128952591)

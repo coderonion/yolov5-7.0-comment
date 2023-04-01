@@ -137,47 +137,62 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
 
 def compute_ap(recall, precision):
     """ Compute the average precision, given the recall and precision curves
+    用于ap_per_class函数中，计算某个类别在某个iou阈值下的mAP
     # Arguments
-        recall:    The recall curve (list)
-        precision: The precision curve (list)
+        recall:    The recall curve (list) (list) [1635] 在某个iou阈值下某个类别所有的预测框的recall  从小到大 (每个预测框的recall都是截至到这个预测框为止的总recall)
+        precision: The precision curve (list)   (list) [1635] 在某个iou阈值下某个类别所有的预测框的precision 总体上是从大到小 但是细节上有点起伏 如: 0.91503 0.91558 0.90968 0.91026 0.90446 0.90506  (每个预测框的precision都是截至到这个预测框为止的总precision)
+                      
     # Returns
-        Average precision, precision curve, recall curve
+        Average precision, Average precision 返回某类别在某个iou下的mAP(均值) [1]
+        precision curve,  precision curve [1637] 返回 开头 + 输入precision(排序后) + 末尾
+        recall curve recall curve [1637] 返回 开头 + 输入recall + 末尾
     """
 
-    # Append sentinel values to beginning and end
-    mrec = np.concatenate(([0.0], recall, [1.0]))
-    mpre = np.concatenate(([1.0], precision, [0.0]))
+    # Append sentinel values to beginning and end   在开头和末尾添加保护值 防止全零的情况出现 value Append sentinel values to beginning and end
+    mrec = np.concatenate(([0.0], recall, [1.0]))  # [1637]
+    mpre = np.concatenate(([1.0], precision, [0.0]))  # [1637]
 
-    # Compute the precision envelope
+    # Compute the precision envelope  np.flip翻转顺序  np.flip(mpre): 把一维数组每个元素的顺序进行翻转 第一个翻转成为最后一个
+    # np.maximum.accumulate(np.flip(mpre)): 计算数组(或数组的特定轴)的累积最大值 令mpre是单调的 从小到大
+    # 到这大概看明白了这步的目的: 要保证mpre是从大到小单调的(左右可以相同)
+    # 我觉得这样可能是为了更好计算mAP 因为如果一直起起伏伏太难算了(x间隔很小就是一个矩形) 而且这样做误差也不会很大 两个之间的数都是间隔很小的
     mpre = np.flip(np.maximum.accumulate(np.flip(mpre)))
 
     # Integrate area under curve
     method = 'interp'  # methods: 'continuous', 'interp'
-    if method == 'interp':
-        x = np.linspace(0, 1, 101)  # 101-point interp (COCO)
-        ap = np.trapz(np.interp(x, mrec, mpre), x)  # integrate
-    else:  # 'continuous'
+    if method == 'interp': # 用一些典型的间断点来计算AP
+        x = np.linspace(0, 1, 101)  # 101-point interp (COCO)  [0, 0.01, ..., 1]
+        ap = np.trapz(np.interp(x, mrec, mpre), x)  # integrate 计算两个list对应点与点之间四边形的面积 以定积分形式估算AP 第一个参数是y 第二个参数是x
+    else:  # 'continuous'   # 采用连续的方法计算AP
+         # 通过错位的方式 判断哪个点当前位置到下一个位置值发生改变 并通过！=判断 返回一个布尔数组
         i = np.where(mrec[1:] != mrec[:-1])[0]  # points where x axis (recall) changes
         ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])  # area under curve
-
+        # 值改变了就求出当前矩阵的面积  值没变就说明当前矩阵和下一个矩阵的高相等所有可以合并计算
     return ap, mpre, mrec
 
 
 class ConfusionMatrix:
+    """用在val.py中计算混淆矩阵
     # Updated version of https://github.com/kaanakan/object_detection_confusion_matrix
+    混淆矩阵: 定义  更新  return  绘制  print打印
+    """
+
     def __init__(self, nc, conf=0.25, iou_thres=0.45):
+        # 初始化混淆矩阵 pred x gt  其中横坐标/纵坐标第81类为背景类
+        # 如果某个gt[j]没用任何pred正样本匹配到 那么[nc, gt[j]_class] += 1
+        # 如果某个pred[i]负样本且没有哪个gt与之对应 那么[pred[i]_class nc] += 1
         self.matrix = np.zeros((nc + 1, nc + 1))
-        self.nc = nc  # number of classes
-        self.conf = conf
-        self.iou_thres = iou_thres
+        self.nc = nc  # number of classes 数据集类别个数
+        self.conf = conf # 预测框置信度阈值
+        self.iou_thres = iou_thres # iou阈值 
 
     def process_batch(self, detections, labels):
         """
         Return intersection-over-union (Jaccard index) of boxes.
-        Both sets of boxes are expected to be in (x1, y1, x2, y2) format.
+        Both sets of boxes are expected to be in (x1, y1, x2, y2) format.  
         Arguments:
-            detections (Array[N, 6]), x1, y1, x2, y2, conf, class
-            labels (Array[M, 5]), class, x1, y1, x2, y2
+            detections (Array[N, 6]), x1, y1, x2, y2, conf, class =[300, 6] 一个batch中一张图的预测信息  其中x1y1x2y2是映射到原图img的
+            labels (Array[M, 5]),  = [17, 5] class, x1, y1, x2, y2 其中x1y1x2y2是映射到原图img的
         Returns:
             None, updates confusion matrix accordingly
         """
@@ -186,24 +201,39 @@ class ConfusionMatrix:
             for gc in gt_classes:
                 self.matrix[self.nc, gc] += 1  # background FN
             return
-
+        # [10, 6] 筛除置信度过低的预测框(和nms差不多)
         detections = detections[detections[:, 4] > self.conf]
-        gt_classes = labels[:, 0].int()
-        detection_classes = detections[:, 5].int()
-        iou = box_iou(labels[:, 1:], detections[:, :4])
+        gt_classes = labels[:, 0].int() # 所有gt框类别(int) [17]  类别可能会重复
+        detection_classes = detections[:, 5].int()  # 所有pred框类别(int) [10] 类别可能会重复  Positive + Negative
+        iou = box_iou(labels[:, 1:], detections[:, :4]) # 求出所有gt框和所有pred框的iou [17, x1y1x2y2] + [10, x1y1x2y2] => [17, 10] [i, j] 第i个gt框和第j个pred的iou
 
+        # iou > self.iou_thres: [17, 10] bool 符合条件True 不符合False
+        # x[0]: [10] gt_index  x[1]: [10] pred_index   x合起来看就是第x[0]个gt框和第x[1]个pred的iou符合条件
+        # 17 x 10个iou 经过iou阈值筛选后只有10个满足iou阈值条件
         x = torch.where(iou > self.iou_thres)
-        if x[0].shape[0]:
+        # 后面会专门对这里一连串的matches变化给个实例再解释
+        if x[0].shape[0]: # 存在大于阈值的iou时
+             # torch.stack(x, 1): [10, gt_index+pred_index]
+            # iou[x[0], x[1]][:, None]): [10, 1]   x[0]和x[1]的iou
+            # 1、matches: [10, gt_index+pred_index+iou] = [10, 3]
             matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()
             if x[0].shape[0] > 1:
+                # 2、matches按第三列iou从大到小重排序
                 matches = matches[matches[:, 2].argsort()[::-1]]
+                # 3、取第二列中各个框首次出现(不同预测的框)的行(即每一种预测的框中iou最大的那个)
                 matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
+                # 4、matches再按第三列iou从大到小重排序
                 matches = matches[matches[:, 2].argsort()[::-1]]
+                # 5、取第一列中各个框首次出现(不同gt的框)的行(即每一种gt框中iou最大的那个)
                 matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
+                # 经过这样的处理 最终得到每一种预测框与所有gt框中iou最大的那个(在大于阈值的前提下)
+                # 预测框唯一  gt框也唯一  这样得到的matches对应的Pred都是正样本Positive
         else:
             matches = np.zeros((0, 3))
 
-        n = matches.shape[0] > 0
+        n = matches.shape[0] > 0  # 满足条件的iou是否大于0个 bool
+            # a.transpose(): 转换维度 对二维数组就是转置 这里的matches: [9, gt_index+pred_index+iou] -> [gt_index+pred_index+iou, 9]
+        # m0: [1, 9] 满足条件(正样本)的gt框index(不重复)  m1: [1, 9] 满足条件(正样本)的pred框index(不重复)
         m0, m1, _ = matches.transpose().astype(int)
         for i, gc in enumerate(gt_classes):
             j = m0 == i
@@ -218,6 +248,7 @@ class ConfusionMatrix:
                     self.matrix[dc, self.nc] += 1  # predicted background
 
     def matrix(self):
+        # 返回这个混淆矩阵
         return self.matrix
 
     def tp_fp(self):
@@ -228,25 +259,34 @@ class ConfusionMatrix:
 
     @TryExcept('WARNING ⚠️ ConfusionMatrix plot failure')
     def plot(self, normalize=True, save_dir='', names=()):
-        import seaborn as sn
+        """
+        :params normalize: 是否将混淆矩阵归一化 默认True
+        :params save_dir: runs/train/expn 混淆矩阵保存地址
+        :params names: 数据集的所有类别名
+        :return None
+        """
+        import seaborn as sn # 图形展示库
 
-        array = self.matrix / ((self.matrix.sum(0).reshape(1, -1) + 1E-9) if normalize else 1)  # normalize columns
-        array[array < 0.005] = np.nan  # don't annotate (would appear as 0.00)
+        array = self.matrix / ((self.matrix.sum(0).reshape(1, -1) + 1E-9) if normalize else 1)  # normalize columns  # 混淆矩阵归一化 0~1
+        array[array < 0.005] = np.nan  # don't annotate (would appear as 0.00) # 混淆矩阵中小于0.005的值被认为NaN
 
-        fig, ax = plt.subplots(1, 1, figsize=(12, 9), tight_layout=True)
-        nc, nn = self.nc, len(names)  # number of classes, names
-        sn.set(font_scale=1.0 if nc < 50 else 0.8)  # for label size
-        labels = (0 < nn < 99) and (nn == nc)  # apply names to ticklabels
+        fig, ax = plt.subplots(1, 1, figsize=(12, 9), tight_layout=True)  # 初始化画布
+        nc, nn = self.nc, len(names)  # number of classes, names  
+        sn.set(font_scale=1.0 if nc < 50 else 0.8)  # for label size 设置label的字体大小
+        labels = (0 < nn < 99) and (nn == nc)  # apply names to ticklabels 绘制混淆矩阵时 是否使用names作为labels
         ticklabels = (names + ['background']) if labels else "auto"
-        with warnings.catch_warnings():
+        with warnings.catch_warnings(): # 绘制热力图 即混淆矩阵可视化
             warnings.simplefilter('ignore')  # suppress empty matrix RuntimeWarning: All-NaN slice encountered
+            # sean.heatmap: 热力图  data: 数据矩阵  annot: 为True时为每个单元格写入数据值 False用颜色深浅表示
+            # annot_kws: 格子外框宽度  fmt: 添加注释时要使用的字符串格式代码 cmap: 指色彩颜色的选择
+            # square: 是否是正方形  xticklabels、yticklabels: xy标签
             sn.heatmap(array,
                        ax=ax,
-                       annot=nc < 30,
+                       annot=nc < 30, 
                        annot_kws={
-                           "size": 8},
-                       cmap='Blues',
-                       fmt='.2f',
+                           "size": 8}, # 热力图内填充数字大小
+                       cmap='Blues', # 热力图的颜色
+                       fmt='.2f',  # 热力图内填充数值的格式控制
                        square=True,
                        vmin=0.0,
                        xticklabels=ticklabels,
@@ -263,8 +303,12 @@ class ConfusionMatrix:
 
 
 def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7):
+    """在ComputeLoss的__call__函数中调用计算回归损失
+    :params box1: 预测框
+    :params box2: 预测框
+    :return box1和box2的IoU/GIoU/DIoU/CIoU
+    """
     # Returns Intersection over Union (IoU) of box1(1,4) to box2(n,4)
-
     # Get the coordinates of bounding boxes
     if xywh:  # transform from xywh to xyxy
         (x1, y1, w1, h1), (x2, y2, w2, h2) = box1.chunk(4, -1), box2.chunk(4, -1)
@@ -277,18 +321,18 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7
         w1, h1 = b1_x2 - b1_x1, b1_y2 - b1_y1 + eps
         w2, h2 = b2_x2 - b2_x1, b2_y2 - b2_y1 + eps
 
-    # Intersection area
+    # Intersection area 交
     inter = (torch.min(b1_x2, b2_x2) - torch.max(b1_x1, b2_x1)).clamp(0) * \
             (torch.min(b1_y2, b2_y2) - torch.max(b1_y1, b2_y1)).clamp(0)
 
-    # Union Area
+    # Union Area 并
     union = w1 * h1 + w2 * h2 - inter + eps
 
     # IoU
-    iou = inter / union
+    iou = inter / union # 交并比
     if CIoU or DIoU or GIoU:
-        cw = torch.max(b1_x2, b2_x2) - torch.min(b1_x1, b2_x1)  # convex (smallest enclosing box) width
-        ch = torch.max(b1_y2, b2_y2) - torch.min(b1_y1, b2_y1)  # convex height
+        cw = torch.max(b1_x2, b2_x2) - torch.min(b1_x1, b2_x1)  # convex (smallest enclosing box) width 两个框的最小闭包区域的width
+        ch = torch.max(b1_y2, b2_y2) - torch.min(b1_y1, b2_y1)  # convex height 两个框的最小闭包区域的height
         if CIoU or DIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
             c2 = cw ** 2 + ch ** 2 + eps  # convex diagonal squared
             rho2 = ((b2_x1 + b2_x2 - b1_x1 - b1_x2) ** 2 + (b2_y1 + b2_y2 - b1_y1 - b1_y2) ** 2) / 4  # center dist ** 2
@@ -304,8 +348,10 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7
 
 
 def box_iou(box1, box2, eps=1e-7):
+    
+    """用于计算混淆矩阵
     # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
-    """
+
     Return intersection-over-union (Jaccard index) of boxes.
     Both sets of boxes are expected to be in (x1, y1, x2, y2) format.
     Arguments:
@@ -347,6 +393,11 @@ def bbox_ioa(box1, box2, eps=1e-7):
 
 
 def wh_iou(wh1, wh2, eps=1e-7):
+    """在ComputeLoss类的build_targets函数中被调用(老版正样本筛选条件)
+    :params wh1: anchors 当前feature map的3个anchor  [N, 2]
+    :params wh2: t[:, 4:6] gt框的wh(没筛选 所有的gt)  [M, 2]
+    :return 返回wh1和wh2的iou(矩阵)
+    """
     # Returns the nxm IoU matrix. wh1 is nx2, wh2 is mx2
     wh1 = wh1[:, None]  # [N,1,2]
     wh2 = wh2[None]  # [1,M,2]
@@ -360,44 +411,63 @@ def wh_iou(wh1, wh2, eps=1e-7):
 @threaded
 def plot_pr_curve(px, py, ap, save_dir=Path('pr_curve.png'), names=()):
     # Precision-recall curve
-    fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True)
-    py = np.stack(py, axis=1)
+    """用于ap_per_class函数
+    Precision-recall curve  绘制PR曲线
+    :params px: [1000] 横坐标 recall 值为0~1直接取1000个数
+    :params py: list{nc} nc个[1000] 所有类别在IOU=0.5,横坐标为px(recall)时的precision
+    :params ap: [nc, 10] 所有类别在每个IOU阈值下的平均mAP
+    :params save_dir: runs\test\exp\PR_curve.png  PR曲线存储位置
+    :params names: {dict:80} 数据集所有类别的字典 key:value
+    """
 
+    fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True) # 设置画布
+    py = np.stack(py, axis=1)  # [1000, nc]
+
+    # 画出所有类别在10个IOU阈值下的PR曲线
     if 0 < len(names) < 21:  # display per-class legend if < 21 classes
-        for i, y in enumerate(py.T):
+        for i, y in enumerate(py.T):  # 如果<21 classes就一个个类画 因为要显示图例就必须一个个画
             ax.plot(px, y, linewidth=1, label=f'{names[i]} {ap[i, 0]:.3f}')  # plot(recall, precision)
     else:
         ax.plot(px, py, linewidth=1, color='grey')  # plot(recall, precision)
 
     ax.plot(px, py.mean(1), linewidth=3, color='blue', label='all classes %.3f mAP@0.5' % ap[:, 0].mean())
-    ax.set_xlabel('Recall')
-    ax.set_ylabel('Precision')
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")
-    ax.set_title('Precision-Recall Curve')
-    fig.savefig(save_dir, dpi=250)
+    ax.set_xlabel('Recall')# 设置x轴标签
+    ax.set_ylabel('Precision')# 设置y轴标签
+    ax.set_xlim(0, 1)# x=[0, 1]
+    ax.set_ylim(0, 1)  # y=[0, 1]
+    ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")  # 显示图例
+    ax.set_title('Precision-Recall Curve') 
+    fig.savefig(save_dir, dpi=250) # 保存PR_curve.png图片
     plt.close(fig)
 
 
 @threaded
 def plot_mc_curve(px, py, save_dir=Path('mc_curve.png'), names=(), xlabel='Confidence', ylabel='Metric'):
     # Metric-confidence curve
-    fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True)
-
-    if 0 < len(names) < 21:  # display per-class legend if < 21 classes
-        for i, y in enumerate(py):
+    """用于ap_per_class函数
+    Metric-Confidence curve 可用于绘制 F1-Confidence/P-Confidence/R-Confidence曲线
+    :params px: [0, 1, 1000] 横坐标 0-1 1000个点 conf   [1000]
+    :params py: 对每个类, 针对横坐标为conf=[0, 1, 1000] 对应的f1/p/r值 纵坐标 [71, 1000]
+    :params save_dir: 图片保存地址
+    :parmas names: 数据集names
+    :params xlabel: x轴标签
+    :params ylabel: y轴标签
+    """
+    fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True)  # 设置画布
+    # 画出所有类别的F1-Confidence/P-Confidence/R-Confidence曲线
+    if 0 < len(names) < 21:  # display per-class legend if < 21 classes 
+        for i, y in enumerate(py):  # 如果<21 classes就一个个类画 因为要显示图例就必须一个个画
             ax.plot(px, y, linewidth=1, label=f'{names[i]}')  # plot(confidence, metric)
-    else:
+    else: # 如果>=21 classes 显示图例就会很乱 所以就不显示图例了 可以直接输入数组 x[1000] y[1000, 71]
         ax.plot(px, py.T, linewidth=1, color='grey')  # plot(confidence, metric)
-
-    y = smooth(py.mean(0), 0.05)
+    # 画出所有类别在每个x点(conf)对应的均值F1-Confidence/P-Confidence/R-Confidence曲线
+    y = smooth(py.mean(0), 0.05) #[1000] 求出所以类别在每个x点(conf)的平均值
     ax.plot(px, y, linewidth=3, color='blue', label=f'all classes {y.max():.2f} at {px[y.argmax()]:.3f}')
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")
-    ax.set_title(f'{ylabel}-Confidence Curve')
-    fig.savefig(save_dir, dpi=250)
+    ax.set_xlabel(xlabel) # 设置x轴标签
+    ax.set_ylabel(ylabel) # 设置y轴标签
+    ax.set_xlim(0, 1)  # x=[0, 1]
+    ax.set_ylim(0, 1)  # y=[0, 1]
+    ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left") # 显示图例
+    ax.set_title(f'{ylabel}-Confidence Curve')  
+    fig.savefig(save_dir, dpi=250) # 保存png图片
     plt.close(fig)

@@ -6,7 +6,7 @@ Loss functions
 import torch # 深度学习库  
 import torch.nn as nn  # torch的神经网络库
 # ----------------- 导入自定义的其他包 -------------------
-from utils.metrics import bbox_iou
+from utils.metrics import bbox_iou # 最终是 CIou
 from utils.torch_utils import de_parallel
 
 
