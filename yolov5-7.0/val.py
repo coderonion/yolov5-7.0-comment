@@ -18,23 +18,23 @@ Usage - formats:
                               yolov5s_edgetpu.tflite     # TensorFlow Edge TPU
                               yolov5s_paddle_model       # PaddlePaddle
 """
-
+# 导入Python 模块
 import argparse  # 命令行选项、参数和子命令解析器
 import json    # JSON 编码和解码器
 import os   # 多种操作系统接口
 import sys   # 系统相关的参数和函数
 from pathlib import Path # 面向对象的文件系统路径
+# 导入第三方库
+import numpy as np   # 数据处理库
+import torch  # 深度学习库  
+from tqdm import tqdm # 进度条库
 
-import numpy as np 
-import torch 
-from tqdm import tqdm
-
-FILE = Path(__file__).resolve() # 获取该文件的绝对路径， 输出****/yolov5-7.0/detect.py  返回新的路径对象 p.resolve() 绝路径 PosixPath('/home/antoine/pathlib')
+FILE = Path(__file__).resolve() # 获取该文件的绝对路径， 输出****/yolov5-7.0/detect.py  返回新的路径对象 p.resolve() 绝路径 
 ROOT = FILE.parents[0]  # YOLOv5 root directory 获取yolov5下的根路径，输出****/yolov5-7.0 
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
-
+# ----------------- 导入自定义的其他包 -------------------
 from models.common import DetectMultiBackend
 from utils.callbacks import Callbacks
 from utils.dataloaders import create_dataloader

@@ -2,21 +2,28 @@
 """
 Model validation metrics
 """
+# 导入Python 模块
+import math # 数学函数
+import warnings # 警告信息的控制
+from pathlib import Path # 面向对象的文件系统路径
+# 导入第三方库
+import matplotlib.pyplot as plt # 图形展示库
+import numpy as np # 数据处理库
+import torch # 深度学习库     
 
-import math # python 内置数学模块
-import warnings 
-from pathlib import Path # python内置路径模块
-
-import matplotlib.pyplot as plt
-import numpy as np
-import torch
-
+# ----------------- 导入自定义的其他包 -------------------
 from utils import TryExcept, threaded
 
 
 def fitness(x):
     # Model fitness as a weighted combination of metrics
+    """通过指标加权的形式返回适应度(最终mAP)  在train.py中使用
+    Model fitness as a weighted combination of metrics
+    判断模型好坏的指标不是mAP@0.5也不是mAP@0.5:0.95 而是[P, R, mAP@0.5, mAP@0.5:0.95]4者的加权
+    一般w=[0,0,0.1,0.9]  即最终的mAP=0.1mAP@0.5 + 0.9mAP@0.5:0.95
+    """
     w = [0.0, 0.0, 0.1, 0.9]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95]
+    # (torch.tensor).sum(1) 每一行求和tensor为二维时返回一个以每一行求和为结果(常数)的行向量
     return (x[:, :4] * w).sum(1)
 
 
@@ -32,54 +39,85 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
     """ Compute the average precision, given the recall and precision curves.
     Source: https://github.com/rafaelpadilla/Object-Detection-Metrics.
     # Arguments
-        tp:  True positives (nparray, nx1 or nx10).
-        conf:  Objectness value from 0-1 (nparray).
-        pred_cls:  Predicted object classes (nparray).
-        target_cls:  True object classes (nparray).
-        plot:  Plot precision-recall curve at mAP@0.5
-        save_dir:  Plot save directory
+        tp:  True positives (nparray, nx1 or nx10). [pred_sum, 10]=[1905, 10] bool 整个数据集所有图片中所有预测框在每一个iou条件下(0.5~0.95)10个是否是TP
+        conf:  Objectness value from 0-1 (nparray).  [img_sum]=[1905] 整个数据集所有图片的所有预测框的conf 
+        pred_cls:  Predicted object classes (nparray).  [img_sum]=[1905] 整个数据集所有图片的所有预测框的类别 这里的tp、conf、pred_cls是一一对应的
+        target_cls:  True object classes (nparray). [gt_sum]=[929] 整个数据集所有图片的所有gt框的class
+        plot:  Plot precision-recall curve at mAP@0.5 bool  
+        save_dir:  Plot save directory  runs\train\exp
+        names: dict{key(class_index):value(class_name)} 获取数据集所有类别的index和对应类名
     # Returns
         The average precision as computed in py-faster-rcnn.
+         p[:, i]: [nc] 最大平均f1时每个类别的precision
+         r[:, i]: [nc] 最大平均f1时每个类别的recall
+         ap: [71, 10] 数据集每个类别在10个iou阈值下的mAP
+         f1[:, i]: [nc] 最大平均f1时每个类别的f1
+         unique_classes.astype('int32'): [nc] 返回数据集中所有的类别index
     """
-
+    # 计算mAP 需要将tp按照conf降序排列
     # Sort by objectness
-    i = np.argsort(-conf)
+    i = np.argsort(-conf)  #按conf从大到小排序 返回数据对应的索引
+    # 得到重新排序后对应的 tp, conf, pre_cls
     tp, conf, pred_cls = tp[i], conf[i], pred_cls[i]
 
     # Find unique classes
-    unique_classes, nt = np.unique(target_cls, return_counts=True)
-    nc = unique_classes.shape[0]  # number of classes, number of detections
+    unique_classes, nt = np.unique(target_cls, return_counts=True) # 对类别去重, 因为计算ap是对每类进行
+    nc = unique_classes.shape[0]  # number of classes, number of detections 数据集类别数
 
     # Create Precision-Recall curve and compute AP for each class
-    px, py = np.linspace(0, 1, 1000), []  # for plotting
-    ap, p, r = np.zeros((nc, tp.shape[1])), np.zeros((nc, 1000)), np.zeros((nc, 1000))
-    for ci, c in enumerate(unique_classes):
-        i = pred_cls == c
+    px, py = np.linspace(0, 1, 1000), []  # for plotting  px: [0, 1] 中间间隔1000个点 x坐标(用于绘制P-Conf、R-Conf、F1-Conf) py: y坐标[] 用于绘制IOU=0.5时的PR曲线
+    ap, p, r = np.zeros((nc, tp.shape[1])), np.zeros((nc, 1000)), np.zeros((nc, 1000)) # 初始化 对每一个类别在每一个IOU阈值下 计算AP P R   ap=[nc, 10]  p=[nc, 1000] r=[nc, 1000]
+    for ci, c in enumerate(unique_classes):   # ci: index 0   c: class 0  unique_classes: 所有gt中不重复的class
+        i = pred_cls == c  #  # i: 记录着所有预测框是否是c类别框   是c类对应位置为True, 否则为False
+        # n_l: gt框中的c类别框数量  = tp+fn   254
         n_l = nt[ci]  # number of labels
+        # n_p: 预测框中c类别的框数量   695
         n_p = i.sum()  # number of predictions
+        # 如果没有预测到 或者 ground truth没有标注 则略过类别c
         if n_p == 0 or n_l == 0:
             continue
 
         # Accumulate FPs and TPs
+         # Accumulate FPs(False Positive) and TPs(Ture Positive)   FP + TP = all_detections
+            # tp[i] 可以根据i中的的True/False觉定是否删除这个数  所有tp中属于类c的预测框
+            #       如: tp=[0,1,0,1] i=[True,False,False,True] b=tp[i]  => b=[0,1]
+            # a.cumsum(0)  会按照对象进行累加操作
+            # 一维按行累加如: a=[0,1,0,1]  b = a.cumsum(0) => b=[0,1,1,2]   而二维则按列累加
+            # fpc: 类别为c 顺序按置信度排列 截至到每一个预测框的各个iou阈值下FP个数 最后一行表示c类在该iou阈值下所有FP数
+            # tpc: 类别为c 顺序按置信度排列 截至到每一个预测框的各个iou阈值下TP个数 最后一行表示c类在该iou阈值下所有TP数
         fpc = (1 - tp[i]).cumsum(0)
         tpc = tp[i].cumsum(0)
 
+        # Recall=TP/(TP+FN)  加一个1e-16的目的是防止分母为0
+            # n_l=TP+FN=num_gt: c类的gt个数=预测是c类而且预测正确+预测不是c类但是预测错误
+            # recall: 类别为c 顺序按置信度排列 截至每一个预测框的各个iou阈值下的召回率
         # Recall
         recall = tpc / (n_l + eps)  # recall curve
+        # 返回所有类别, 横坐标为conf(值为px=[0, 1, 1000] 0~1 1000个点)对应的recall值  r=[nc, 1000]  每一行从小到大
         r[ci] = np.interp(-px, -conf[i], recall[:, 0], left=0)  # negative x, xp because xp decreases
 
         # Precision
+        # Precision=TP/(TP+FP)
+        # precision: 类别为c 顺序按置信度排列 截至每一个预测框的各个iou阈值下的精确率
         precision = tpc / (tpc + fpc)  # precision curve
+        # 返回所有类别, 横坐标为conf(值为px=[0, 1, 1000] 0~1 1000个点)对应的precision值  p=[nc, 1000]
+        # 总体上是从小到大 但是细节上有点起伏 如: 0.91503 0.91558 0.90968 0.91026 0.90446 0.90506
         p[ci] = np.interp(-px, -conf[i], precision[:, 0], left=1)  # p at pr_score
 
         # AP from recall-precision curve
-        for j in range(tp.shape[1]):
+        # 对c类别, 分别计算每一个iou阈值(0.5~0.95 10个)下的mAP
+        for j in range(tp.shape[1]): # tp [pred_sum, 10]
+            # 这里执行10次计算ci这个类别在所有mAP阈值下的平均mAP  ap[nc, 10]
             ap[ci, j], mpre, mrec = compute_ap(recall[:, j], precision[:, j])
             if plot and j == 0:
-                py.append(np.interp(px, mrec, mpre))  # precision at mAP@0.5
+                py.append(np.interp(px, mrec, mpre))  # precision at mAP@0.5 用于绘制每一个类别IOU=0.5时的PR曲线
 
     # Compute F1 (harmonic mean of precision and recall)
-    f1 = 2 * p * r / (p + r + eps)
+    # 计算F1分数 P和R的调和平均值  综合评价指标
+    # 我们希望的是P和R两个越大越好, 但是P和R常常是两个冲突的变量, 经常是P越大R越小, 或者R越大P越小 所以我们引入F1综合指标
+    # 不同任务的重点不一样, 有些任务希望P越大越好, 有些任务希望R越大越好, 有些任务希望两者都大, 这时候就看F1这个综合指标了
+    # 返回所有类别, 横坐标为conf(值为px=[0, 1, 1000] 0~1 1000个点)对应的f1值  f1=[nc, 1000]
+    f1 = 2 * p * r / (p + r + eps)  # 用于绘制P-Confidence(F1_curve.png)
     names = [v for k, v in names.items() if k in unique_classes]  # list: only classes that have data
     names = dict(enumerate(names))  # to dict
     if plot:
@@ -88,6 +126,8 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
         plot_mc_curve(px, p, Path(save_dir) / f'{prefix}P_curve.png', names, ylabel='Precision')
         plot_mc_curve(px, r, Path(save_dir) / f'{prefix}R_curve.png', names, ylabel='Recall')
 
+    # f1=[nc, 1000]   f1.mean(0)=[1000]求出所有类别在x轴每个conf点上的平均f1
+    # .argmax(): 求出每个点平均f1中最大的f1对应conf点的index
     i = smooth(f1.mean(0), 0.1).argmax()  # max F1 index
     p, r, f1 = p[:, i], r[:, i], f1[:, i]
     tp = (r * nt).round()  # true positives

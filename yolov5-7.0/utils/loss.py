@@ -2,21 +2,22 @@
 """
 Loss functions
 """
-
-import torch # 导入torch 包
-import torch.nn as nn  # 导入torch的神经网络库
-
+# 导入第三方库
+import torch # 深度学习库  
+import torch.nn as nn  # torch的神经网络库
+# ----------------- 导入自定义的其他包 -------------------
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
 
 
 def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
-    # return positive, negative label smoothing BCE targets
+    # 用在ComputeLoss类中标签平滑操作  [1, 0]  =>  [0.95, 0.05]
+    # return positive, negative label smoothing BCE targets 两个值分别代表正样本和负样本的标签取值,原先的正样本=1 负样本=0 改为 正样本=1.0 - 0.5 * eps  负样本=0.5 * eps
     return 1.0 - 0.5 * eps, 0.5 * eps
 
 
 class BCEBlurWithLogitsLoss(nn.Module):
-    # BCEwithLogitLoss() with reduced missing label effects.
+    # BCEwithLogitLoss() with reduced missing label effects. 这个函数是BCE函数的一个替代，是yolov5作者的一个实验性的函数，可以自己试试效果。
     def __init__(self, alpha=0.05):
         super().__init__()
         self.loss_fcn = nn.BCEWithLogitsLoss(reduction='none')  # must be nn.BCEWithLogitsLoss()
@@ -33,7 +34,7 @@ class BCEBlurWithLogitsLoss(nn.Module):
 
 
 class FocalLoss(nn.Module):
-    # Wraps focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5)
+    # Wraps focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5) 用在代替原本的BCEcls（分类损失）和BCEobj（置信度损失）
     def __init__(self, loss_fcn, gamma=1.5, alpha=0.25):
         super().__init__()
         self.loss_fcn = loss_fcn  # must be nn.BCEWithLogitsLoss()

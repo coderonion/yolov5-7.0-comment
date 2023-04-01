@@ -55,8 +55,8 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, check_amp, check_dataset, ch
                            yaml_save)
 from utils.loggers import Loggers
 from utils.loggers.comet.comet_utils import check_comet_resume
-from utils.loss import ComputeLoss
-from utils.metrics import fitness
+from utils.loss import ComputeLoss  # 损失函数
+from utils.metrics import fitness # 计算 P，R,map 这些指标
 from utils.plots import plot_evolve
 from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
                                smart_resume, torch_distributed_zero_first)
@@ -410,7 +410,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                 callbacks=callbacks,
                                                 compute_loss=compute_loss) #  # 损失函数(train)
          
-            # Update best mAP
+            # Update best mAP  加权值 0.1map0.5+0.9 map0.5:0.95
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
             stop = stopper(epoch=epoch, fitness=fi)  # early stop check
             if fi > best_fitness:
