@@ -29,6 +29,9 @@
   - metrics.py
 
     - 目标检测基础知识
+      - Confusion matrix
+      - Accuary
+      - Error Rate
       - Precurvie
       - Recurve
       - F1score

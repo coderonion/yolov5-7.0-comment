@@ -42,22 +42,24 @@ VID_FORMATS = 'asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 't
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html  这个 Worker 是这台机器上的第几个 Worker
 RANK = int(os.getenv('RANK', -1)) # 这个 Worker 是全局第几个 Worker
 PIN_MEMORY = str(os.getenv('PIN_MEMORY', True)).lower() == 'true'  # global pin_memory for dataloaders
-
+# 相机设置
 # Get orientation exif tag
+# 专门为数码相机的照片而设定  可以记录数码照片的属性信息和拍摄数据
 for orientation in ExifTags.TAGS.keys():
     if ExifTags.TAGS[orientation] == 'Orientation':
         break
 
-# 返回文件列表的hash值
+
 def get_hash(paths):
     # Returns a single hash value of a list of paths (files or dirs)
+    # 返回文件列表的hash值
     size = sum(os.path.getsize(p) for p in paths if os.path.exists(p))  # sizes
     h = hashlib.md5(str(size).encode())  # hash sizes
     h.update(''.join(paths).encode())  # hash paths
     return h.hexdigest()  # return hash
 
-# 获取图片的宽高
 def exif_size(img):
+    # 获取数码相机的图片宽高信息  并且判断是否需要旋转（数码相机可以多角度拍摄）
     # Returns exif-corrected PIL size
     s = img.size  # (width, height)
     with contextlib.suppress(Exception):
@@ -100,25 +102,31 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 
-def create_dataloader(path,
-                      imgsz,
-                      batch_size,
-                      stride,
-                      single_cls=False,
-                      hyp=None,
-                      augment=False,
-                      cache=False,
-                      pad=0.0,
-                      rect=False,
-                      rank=-1,
-                      workers=8,
-                      image_weights=False,
-                      quad=False,
-                      prefix='',
+def create_dataloader(path, # 图片数据加载路径 train/test  如: ../datasets/VOC/images/train2007
+                      imgsz, # train/test图片尺寸（数据增强后大小） 640
+                      batch_size, #  batch size 大小 8/16/32
+                      stride, # 模型最大stride=32   [32 16 8]
+                      single_cls=False, #数据集是否是单类别 默认False
+                      hyp=None, #  超参列表dict 网络训练时的一些超参数，包括学习率等，这里主要用到里面一些关于数据增强(旋转、平移等)的系数
+                      augment=False,   #  是否要进行数据增强  False
+                      cache=False, # 是否cache_images False
+                      pad=0.0, # 设置矩形训练的shape时进行的填充 默认0.0
+                      rect=False, #  是否开启矩形train/test  默认训练集关闭 验证集开启
+                      rank=-1, #  多卡训练时的进程编号 rank为进程编号  -1且gpu=1时不进行分布式  -1且多块gpu使用DataParallel模式  默认-1
+                      workers=8, # dataloader的numworks 加载数据时的cpu进程数
+                      image_weights=False,  # 训练时是否根据图片样本真实框分布权重来选择图片  默认False
+                      quad=False, # dataloader取数据时, 是否使用collate_fn4代替collate_fn  默认False
+                      prefix='', # 显示信息   一个标志，多为train/val，处理标签时保存cache文件会用到
                       shuffle=False):
+    """在train.py中被调用，用于生成Trainloader, dataset，testloader
+        自定义dataloader函数: 调用LoadImagesAndLabels获取数据集(包括数据增强) + 调用分布式采样器DistributedSampler +
+                            自定义InfiniteDataLoader 进行永久持续的采样数据
+    """
     if rect and shuffle:
         LOGGER.warning('WARNING ⚠️ --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
+    # 主进程实现数据的预读取并缓存，然后其它子进程则从缓存中读取数据并进行一系列运算。
+    # 为了完成数据的正常同步, yolov5基于torch.distributed.barrier()函数实现了上下文管理器
     with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
         dataset = LoadImagesAndLabels(
             path,
@@ -424,6 +432,15 @@ class LoadStreams:
 
 def img2label_paths(img_paths):
     # Define label paths as a function of image paths
+    """用在LoadImagesAndLabels模块的__init__函数中
+    根据imgs图片的路径找到对应labels的路径
+    Define label paths as a function of image paths
+    :params img_paths: {list: 50}  整个数据集的图片相对路径  例如: '..\\datasets\\VOC\\images\\train2007\\000012.jpg'
+                                                        =>   '..\\datasets\\VOC\\labels\\train2007\\000012.jpg'
+    """
+    # 因为python是跨平台的,在Windows上,文件的路径分隔符是'\',在Linux上是'/'
+    # 为了让代码在不同的平台上都能运行，那么路径应该写'\'还是'/'呢？ os.sep根据你所处的平台, 自动采用相应的分隔符号
+    # sa: '\\images\\'    sb: '\\labels\\'
     sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels{os.sep}'  # /images/, /labels/ substrings
     return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.txt' for x in img_paths]
 
@@ -434,16 +451,16 @@ class LoadImagesAndLabels(Dataset):
     rand_interp_methods = [cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
 
     def __init__(self,
-                 path,
-                 img_size=640,
+                 path, # 图片路径
+                 img_size=640, # 经过数据增强后的数据图片的大小
                  batch_size=16,
-                 augment=False,
-                 hyp=None,
+                 augment=False, #  是否启动数据增强 一般训练时打开 验证时关闭
+                 hyp=None, # 超参列表
                  rect=False,
                  image_weights=False,
                  cache_images=False,
                  single_cls=False,
-                 stride=32,
+                 stride=32,  # 最大下采样率 32
                  pad=0.0,
                  min_items=0,
                  prefix=''):
@@ -451,20 +468,26 @@ class LoadImagesAndLabels(Dataset):
         self.augment = augment
         self.hyp = hyp
         self.image_weights = image_weights
-        self.rect = False if image_weights else rect
+        self.rect = False if image_weights else rect # 是否启动矩形训练 一般训练时关闭 验证时打开 可以加速
         self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
-        self.mosaic_border = [-img_size // 2, -img_size // 2]
+        self.mosaic_border = [-img_size // 2, -img_size // 2]  # mosaic增强的边界值  [-320, -320]
         self.stride = stride
         self.path = path
         self.albumentations = Albumentations(size=img_size) if augment else None
 
+
+        # 2、得到path路径下的所有图片的路径self.img_files  这里需要自己debug一下 不会太难
         try:
             f = []  # image files
             for p in path if isinstance(path, list) else [path]:
+                # 获取数据集路径path，包含图片路径的txt文件或者包含图片的文件夹路径
+                # 使用pathlib.Path生成与操作系统无关的路径，因为不同操作系统路径的‘/’会有所不同
                 p = Path(p)  # os-agnostic
+                # 如果路径path为包含图片的文件夹路径
                 if p.is_dir():  # dir
                     f += glob.glob(str(p / '**' / '*.*'), recursive=True)
                     # f = list(p.rglob('*.*'))  # pathlib
+                # 如果路径path为包含图片路径的txt文件
                 elif p.is_file():  # file
                     with open(p) as t:
                         t = t.read().strip().splitlines()
@@ -473,6 +496,8 @@ class LoadImagesAndLabels(Dataset):
                         # f += [p.parent / x.lstrip(os.sep) for x in t]  # to global path (pathlib)
                 else:
                     raise FileNotFoundError(f'{prefix}{p} does not exist')
+            # 破折号替换为os.sep，os.path.splitext(x)将文件名与扩展名分开并返回一个列表
+            # 筛选f中所有的图片文件
             self.im_files = sorted(x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in IMG_FORMATS)
             # self.img_files = sorted([x for x in f if x.suffix[1:].lower() in IMG_FORMATS])  # pathlib
             assert self.im_files, f'{prefix}No images found'
@@ -480,6 +505,7 @@ class LoadImagesAndLabels(Dataset):
             raise Exception(f'{prefix}Error loading data from {path}: {e}\n{HELP_URL}') from e
 
         # Check cache
+        # 3、根据imgs路径找到labels的路径self.label_files
         self.label_files = img2label_paths(self.im_files)  # labels
         cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')
         try:
@@ -641,6 +667,7 @@ class LoadImagesAndLabels(Dataset):
         return x
 
     def __len__(self):
+        # 这个函数是求数据集图片的数量
         return len(self.im_files)
 
     # def __iter__(self):
@@ -650,6 +677,16 @@ class LoadImagesAndLabels(Dataset):
     #     return self
 
     def __getitem__(self, index):
+        """
+               这部分是数据增强函数，一般一次性执行batch_size次。
+               训练 数据增强: mosaic(random_perspective) + hsv + 上下左右翻转
+               测试 数据增强: letterbox
+               :return torch.from_numpy(img): 这个index的图片数据(增强后) [3, 640, 640]
+               :return labels_out: 这个index图片的gt label [6, 6] = [gt_num, 0+class+xywh(normalized)]
+               :return self.img_files[index]: 这个index图片的路径地址
+               :return shapes: 这个batch的图片的shapes 测试时(矩形训练)才有  验证时为None   for COCO mAP rescaling
+        """
+        # 这里可以通过三种形式获取要进行数据增强的图片index  linear, shuffled, or image_weights
         index = self.indices[index]  # linear, shuffled, or image_weights
 
         hyp = self.hyp
